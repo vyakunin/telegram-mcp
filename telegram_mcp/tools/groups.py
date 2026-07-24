@@ -1115,6 +1115,72 @@ async def export_chat_invite(chat_id: Union[int, str], account: str = None) -> s
 
 @mcp.tool(
     annotations=ToolAnnotations(
+        title="Check Chat Username", openWorldHint=True, readOnlyHint=True
+    )
+)
+@with_account(readonly=True)
+@validate_id("chat_id")
+async def check_chat_username(chat_id: Union[int, str], username: str, account: str = None) -> str:
+    """
+    Check whether a public username is available for a channel/supergroup.
+
+    Telegram is the only authority here: t.me/<name> renders a generic "Contact" page for
+    a free name AND for a name held by a user, so browsing it proves nothing.
+
+    Args:
+        chat_id: The channel/supergroup to check the username FOR.
+        username: The username to test, without the leading @.
+    """
+    try:
+        from telethon.tl import functions
+
+        cl = get_client(account)
+        entity = await resolve_entity(chat_id, cl)
+        available = await cl(
+            functions.channels.CheckUsernameRequest(channel=entity, username=username.lstrip("@"))
+        )
+        return f"@{username.lstrip('@')} is {'AVAILABLE' if available else 'TAKEN'}"
+    except Exception as e:
+        logger.exception(f"check_chat_username failed (chat_id={chat_id}, username={username})")
+        return log_and_format_error("check_chat_username", e, chat_id=chat_id)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Set Chat Username", openWorldHint=True, destructiveHint=True, idempotentHint=True
+    )
+)
+@with_account(readonly=False)
+@validate_id("chat_id")
+async def set_chat_username(chat_id: Union[int, str], username: str, account: str = None) -> str:
+    """
+    Give a channel/supergroup a public username (t.me/<username>), or remove it.
+
+    Making a channel public is externally visible and claims a global name, so treat it
+    as a Tier-3 action: confirm the exact name with the owner first. Pass an empty
+    username to take the channel private again.
+
+    Args:
+        chat_id: The channel/supergroup to rename.
+        username: The username without the leading @; "" removes the current one.
+    """
+    try:
+        from telethon.tl import functions
+
+        cl = get_client(account)
+        entity = await resolve_entity(chat_id, cl)
+        name = username.lstrip("@")
+        await cl(functions.channels.UpdateUsernameRequest(channel=entity, username=name))
+        if not name:
+            return "public username removed — the chat is private again"
+        return f"public username set: https://t.me/{name}"
+    except Exception as e:
+        logger.exception(f"set_chat_username failed (chat_id={chat_id}, username={username})")
+        return log_and_format_error("set_chat_username", e, chat_id=chat_id)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
         title="Import Chat Invite", openWorldHint=True, destructiveHint=True, idempotentHint=True
     )
 )
